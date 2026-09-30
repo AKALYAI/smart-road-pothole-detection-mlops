@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>RoadWatch — Smart Pothole Detection &amp; Management</title>
+<meta name="theme-color" content="#16181a">
+<meta name="description" content="Detect potholes from a photo, GPS-tag them, and track municipal repair tickets — installable as an app.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg>
+    </div>
+    <div>
+      <h1>RoadWatch</h1>
+      <span class="sub">Smart Pothole Detection &amp; Management · YOLOv8</span>
+    </div>
+  </div>
+  <div class="top-right">
+    <button class="bell" id="bellBtn" data-role="admin" title="High-severity alerts" hidden>🔔<span class="bell-badge" id="bellBadge" hidden>0</span></button>
+    <div class="status-pill">
+      <span class="status-dot" id="apiStatusDot"></span>
+      <span id="apiStatusText">Checking API…</span>
+    </div>
+    <span class="user-chip" id="userChip" hidden></span>
+    <button class="btn btn-outline btn-sm" id="btnLogin">Log in</button>
+    <button class="btn btn-outline btn-sm" id="btnLogout" hidden>Log out</button>
+  </div>
+</div>
+<div class="lane-divider"></div>
+
+<div class="tabs" id="tabs">
+  <button class="tab-btn active" data-view="detect">Detect</button>
+  <button class="tab-btn" data-view="track">Track complaint</button>
+  <button class="tab-btn" data-view="map">Map &amp; heatmap</button>
+  <button class="tab-btn" data-view="mine" data-role="user" hidden>My reports</button>
+  <button class="tab-btn" data-view="tickets" data-role="admin" hidden>Tickets</button>
+  <button class="tab-btn" data-view="analytics" data-role="admin" hidden>Analytics</button>
+  <button class="tab-btn" data-view="monitor" data-role="admin" hidden>Model monitor</button>
+  <button class="tab-btn" data-view="alerts" data-role="admin" hidden>Alerts</button>
+  <button class="tab-btn" data-view="zones">Road health</button>
+  <button class="tab-btn" data-view="dataset" data-role="admin" hidden>Dataset</button>
+  <button class="tab-btn" data-view="audit" data-role="admin" hidden>Audit log</button>
+</div>
+
+<div class="hero">
+  <div class="hero-inner">
+    <h2>Spot road hazards before they cause damage.</h2>
+    <p>Upload a photo, snap one live, or drop it in — RoadWatch finds potholes, grades their severity, and files a ticket automatically — or links it to an existing one if it's already been reported.</p>
+    <ol class="pipeline-strip" aria-label="Detection pipeline">
+      <li><span class="pipeline-tag">01</span>Image in</li>
+      <li><span class="pipeline-tag">02</span>YOLOv8 inference</li>
+      <li><span class="pipeline-tag">03</span>Severity graded</li>
+      <li><span class="pipeline-tag">04</span>Ticket filed</li>
+    </ol>
+  </div>
+  <div class="hero-road" aria-hidden="true">
+    <div class="hero-road-lane"></div>
+  </div>
+</div>
+
+<main>
+
+  <!-- ============ DETECT VIEW ============ -->
+  <section id="view-detect" class="view active">
+    <div class="grid-2">
+
+      <div class="card">
+        <h2>Submit a road image</h2>
+        <p class="card-desc">Upload a photo or capture one live. The model scans it for potholes and files a complaint automatically.</p>
+
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload an image">
+          <svg class="icon" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Click to upload</strong> or drag an image here</p>
+          <p>JPG or PNG, up to ~10MB · gallery photos are auto-checked for GPS data</p>
+        </div>
+        <input type="file" id="fileInput" accept="image/*">
+
+        <div class="action-row">
+          <button class="btn btn-secondary" id="btnCamera">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Use camera
+          </button>
+          <button class="btn btn-outline" id="btnLocation">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Attach GPS manually
+          </button>
+        </div>
+
+        <input class="field" id="notifyEmail" type="email" placeholder="Notify by email when status changes (optional)" style="width:100%; margin-top:10px;">
+
+        <div id="cameraWrap">
+          <video id="cameraVideo" autoplay playsinline></video>
+          <canvas id="cameraCanvas"></canvas>
+          <div class="action-row">
+            <button class="btn btn-primary" id="btnCapture">Capture frame</button>
+            <button class="btn btn-outline" id="btnCloseCamera">Close camera</button>
+          </div>
+        </div>
+
+        <div class="location-row" id="locationRow" style="display:none;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span class="loc-value" id="locationValue">—</span>
+        </div>
+
+        <div id="previewWrap" style="display:none;">
+          <img id="previewImg" alt="preview">
+          <div class="action-row" style="justify-content:center;">
+            <button class="btn btn-primary" id="btnDetect">Run detection</button>
+            <button class="btn btn-outline" id="btnReset">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="resultsCard" style="display:none;">
+        <h2>Detection result</h2>
+        <p class="card-desc">Annotated image with bounding boxes and assigned severity.</p>
+        <div id="resultImgWrap">
+          <img id="resultImg" alt="result">
+        </div>
+        <div class="result-meta" id="resultMeta"></div>
+        <div class="complaint-note" id="complaintNote"></div>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- ============ TRACK VIEW (public) ============ -->
+  <section id="view-track" class="view">
+    <div class="card">
+      <h2>Track a complaint</h2>
+      <p class="card-desc">Enter your ticket ID to see where it is: Open → Assigned → In Progress → Resolved.</p>
+      <div class="action-row">
+        <input class="field" id="trackInput" placeholder="Ticket ID, e.g. 9F3A21BC" maxlength="16">
+        <button class="btn btn-primary" id="btnTrack">Track</button>
+      </div>
+      <div id="trackResult"></div>
+    </div>
+  </section>
+
+  <!-- ============ MAP VIEW (public) ============ -->
+  <section id="view-map" class="view">
+    <div class="card">
+      <h2>Pothole map</h2>
+      <p class="card-desc">Geotagged complaints. Switch to the heatmap to see pothole-prone areas by colour intensity.</p>
+      <div class="action-row map-controls">
+        <div class="seg" id="mapMode">
+          <button class="seg-btn active" data-mode="markers">Markers</button>
+          <button class="seg-btn" data-mode="heat">Heatmap</button>
+          <button class="seg-btn" data-mode="both">Both</button>
+        </div>
+        <label class="check"><input type="checkbox" id="mapResolved" checked> include resolved</label>
+        <span class="muted" id="mapCount"></span>
+      </div>
+      <div id="map"></div>
+    </div>
+  </section>
+
+  <!-- ============ MY REPORTS (logged-in) ============ -->
+  <section id="view-mine" class="view">
+    <div class="card">
+      <h2>My reports</h2>
+      <p class="card-desc">Complaints you filed while logged in.</p>
+      <div id="mineList"></div>
+    </div>
+  </section>
+
+  <!-- ============ TICKETS (admin) ============ -->
+  <section id="view-tickets" class="view">
+    <div class="card">
+      <h2>Complaint tickets</h2>
+      <p class="card-desc">Assign a department, move tickets through the workflow, and attach repair photos.</p>
+      <div class="action-row filters">
+        <input class="field" id="fSearch" placeholder="Search ID / address">
+        <select class="field" id="fStatus"><option value="">All statuses</option><option>Open</option><option>Assigned</option><option>In Progress</option><option>Resolved</option></select>
+        <select class="field" id="fSeverity"><option value="">All severities</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select>
+        <select class="field" id="fDept"><option value="">All departments</option></select>
+        <select class="field" id="fSort">
+          <option value="date_reported">Sort: Date</option>
+          <option value="severity">Sort: Severity</option>
+          <option value="status">Sort: Status</option>
+          <option value="confidence">Sort: Confidence</option>
+          <option value="num_potholes">Sort: Pothole count</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="btnFilter">Apply</button>
+        <button class="btn btn-outline btn-sm" id="btnExport">CSV</button>
+        <button class="btn btn-outline btn-sm" id="btnExportPdf">PDF</button>
+        <button class="btn btn-outline btn-sm" id="btnExportXlsx">Excel</button>
+      </div>
+      <div id="ticketsTableWrap">
+        <table class="tickets">
+          <thead><tr>
+            <th>Image</th><th>Ticket</th><th>Severity</th><th>Confidence</th><th>Reports</th>
+            <th>Location</th><th>Date</th><th>Department</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody id="ticketsBody"></tbody>
+        </table>
+        <div class="empty-state" id="ticketsEmpty" style="display:none;">No complaints match.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ANALYTICS (admin) ============ -->
+  <section id="view-analytics" class="view">
+    <div class="stat-row" id="statRow"></div>
+    <div class="grid-2">
+      <div class="card"><h2>Severity breakdown</h2><p class="card-desc">Low / Medium / High / Critical.</p><canvas id="severityChart" height="220"></canvas></div>
+      <div class="card"><h2>By department</h2><p class="card-desc">Assigned workload.</p><canvas id="deptChart" height="220"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div><h2>Trend analysis</h2><p class="card-desc" id="trendSummary">Complaints filed over time.</p></div>
+        <div class="seg" id="trendPeriod">
+          <button class="seg-btn active" data-p="daily">Daily</button>
+          <button class="seg-btn" data-p="weekly">Weekly</button>
+          <button class="seg-btn" data-p="monthly">Monthly</button>
+        </div>
+      </div>
+      <canvas id="trendChart" height="110"></canvas>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h2>Model confidence</h2><p class="card-desc" id="confSummary">Detection quality across filed complaints.</p><canvas id="confChart" height="200"></canvas><div id="confBands" class="bands"></div></div>
+      <div class="card"><h2>Hotspots</h2><p class="card-desc">Most pothole-prone ~550 m grid cells (unresolved).</p><div id="hotspotList"></div><h3 class="sub-h">Needs human review</h3><p class="card-desc">Complaints whose weakest detection is low-confidence.</p><div id="reviewList"></div></div>
+    </div>
+  </section>
+
+  <!-- ============ MODEL MONITOR (admin) ============ -->
+  <section id="view-monitor" class="view">
+    <div class="card">
+      <h2>Model performance</h2>
+      <p class="card-desc" id="perfSummary">Precision, recall, F1, and mAP of the model currently serving predictions.</p>
+      <div class="stat-row" id="perfRow"></div>
+    </div>
+    <div class="card"><h2>Drift status</h2><div id="driftBox"></div></div>
+    <div class="grid-2">
+      <div class="card"><h2>Mean confidence over time</h2><p class="card-desc">Daily mean detection confidence vs. training baseline.</p><canvas id="driftChart" height="200"></canvas></div>
+      <div class="card"><h2>Confidence distribution</h2><p class="card-desc">Live window vs. training baseline.</p><canvas id="distChart" height="200"></canvas></div>
+    </div>
+    <div class="card"><h2>Model versions</h2><p class="card-desc">Training runs tracked in MLflow — compare metrics across versions.</p><div id="versionsBox"></div></div>
+  </section>
+
+  <!-- ============ ALERTS (admin) ============ -->
+  <section id="view-alerts" class="view">
+    <div class="card">
+      <div class="card-head"><div><h2>High-severity alerts</h2><p class="card-desc">Raised when a High or Critical pothole is filed or escalated.</p></div>
+      <button class="btn btn-outline btn-sm" id="btnAckAll">Acknowledge all</button></div>
+      <div id="alertList"></div>
+    </div>
+  </section>
+
+  <!-- ============ ZONES / ROAD HEALTH (public read, admin manage) ============ -->
+  <section id="view-zones" class="view">
+    <div class="card" data-role="admin">
+      <h2>Create a zone</h2>
+      <p class="card-desc">A named area (ward, highway stretch) — complaints filed inside its radius are auto-assigned to it.</p>
+      <div class="action-row filters">
+        <input class="field" id="zName" placeholder="Zone name, e.g. Ward 12">
+        <input class="field" id="zLat" placeholder="Latitude" inputmode="decimal">
+        <input class="field" id="zLng" placeholder="Longitude" inputmode="decimal">
+        <input class="field" id="zRadius" placeholder="Radius (km)" value="2" inputmode="decimal" style="max-width:110px">
+        <button class="btn btn-secondary btn-sm" id="btnCreateZone">Create</button>
+      </div>
+      <div class="err" id="zoneErr"></div>
+    </div>
+    <div class="card">
+      <h2>Road health by zone</h2>
+      <p class="card-desc">0–100 score from unresolved severity, backlog, and resolution speed — worst first.</p>
+      <div id="zoneList"></div>
+    </div>
+  </section>
+
+  <!-- ============ DATASET MANAGEMENT (admin) ============ -->
+  <section id="view-dataset" class="view">
+    <div class="card">
+      <h2>Upload training images</h2>
+      <p class="card-desc">Stage new road photos (and an optional YOLO-format .txt label) for a future retraining run — see scripts/retrain_pipeline.py.</p>
+      <div class="action-row filters">
+        <input type="file" accept="image/*" class="field" id="dsImage">
+        <input type="file" accept=".txt" class="field" id="dsLabel" title="Optional YOLO label .txt">
+        <input class="field" id="dsNotes" placeholder="Notes (optional)">
+        <button class="btn btn-secondary btn-sm" id="btnDsUpload">Upload</button>
+      </div>
+      <div class="err" id="dsErr"></div>
+      <p class="muted" id="dsCount"></p>
+      <div id="dsList"></div>
+    </div>
+  </section>
+
+  <!-- ============ AUDIT LOG (admin) ============ -->
+  <section id="view-audit" class="view">
+    <div class="card">
+      <h2>Audit log</h2>
+      <p class="card-desc">Who did what, and when — status changes, assignments, zone/dataset edits, corrections, alert acknowledgements.</p>
+      <div class="action-row filters">
+        <input class="field" id="auActor" placeholder="Actor (username)">
+        <input class="field" id="auAction" placeholder="Action (e.g. status_changed)">
+        <button class="btn btn-secondary btn-sm" id="btnAuditFilter">Apply</button>
+      </div>
+      <div id="auditList"></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ MODALS ============ -->
+<div class="modal-back" id="loginModal" hidden>
+  <div class="modal small">
+    <h2 id="loginTitle">Log in</h2>
+    <p class="card-desc">Admins manage tickets and analytics. Citizens can register to keep track of their own reports.</p>
+    <input class="field" id="loginUser" placeholder="Username" autocomplete="username">
+    <input class="field" id="loginPass" type="password" placeholder="Password" autocomplete="current-password">
+    <input class="field" id="loginEmail" type="email" placeholder="Email (optional — for status-change notifications)" hidden>
+    <div class="err" id="loginErr"></div>
+    <div class="action-row">
+      <button class="btn btn-primary" id="btnLoginSubmit">Log in</button>
+      <button class="btn btn-outline" id="btnLoginToggle">Create citizen account</button>
+      <button class="btn btn-outline" id="btnLoginCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="ticketModal" hidden>
+  <div class="modal">
+    <button class="modal-x" id="ticketModalClose" aria-label="Close">×</button>
+    <div id="ticketModalBody"></div>
+  </div>
+</div>
+
+<div class="footer-note">RoadWatch · YOLOv8 + FastAPI + MLflow + DVC · Backend expected at <span id="apiBaseNote"></span></div>
+
+<div id="toast"></div>
+
+<script src="chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.js"></script>
+<script src="script.js"></script>
+<script src="auth.js"></script>
+<script src="citizen.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Ultralytics / training run artifacts (large, regenerable — keep dataset via DVC instead)
+runs/
+scripts/*.pt
+
+# MLflow local tracking store
+mlflow_tracking/*.db
+mlflow_tracking/mlruns/
+mlruns/
+
+# Backend runtime data
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/*.db
+
+# DVC-tracked data (pulled via `dvc pull`, not stored in git)
+/data/pothole_dataset
+
+# OS / editor
+.DS_Store
+.vscode/
+*.log
+
+# yolo base weights cache
+scripts/*.pt
+
+# Trained YOLO models
+models/*.pt
+.env
+!mlflow_tracking/.gitkeep

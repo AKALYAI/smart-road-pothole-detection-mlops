@@ -1,0 +1,95 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: System libs (opencv runtime)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+
+      - name: Install CPU-only PyTorch (keeps CI fast)
+        run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt pytest httpx
+
+      - name: Byte-compile
+        working-directory: backend
+        run: python -m py_compile $(find app -name "*.py")
+
+      - name: Run tests
+        working-directory: backend
+        run: python -m pytest tests -q
+
+      - name: Check project files
+        run: |
+          test -f dvc.yaml && test -f docker-compose.yml && test -f Dockerfile
+          echo "Project structure OK"
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (also validates the Dockerfile on every PR)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: roadwatch:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test the container
+        run: |
+          docker run -d --name rw -p 8000:8000 -e REQUIRE_API_KEY=false roadwatch:ci
+          for i in $(seq 1 30); do curl -fs localhost:8000/health && break || sleep 2; done
+          curl -fs localhost:8000/health
+          curl -fs localhost:8000/insights/map
+
+  publish:
+    # Deploy step: push the image to GitHub Container Registry on main / version tags.
+    needs: docker
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+            type=sha
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha

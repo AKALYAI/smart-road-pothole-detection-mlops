@@ -1,0 +1,13 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+data/
+runs/
+.dvc/cache
+backend/uploads/*.jpg
+backend/uploads/*.png
+backend/*.db
+*.md
+!README.md

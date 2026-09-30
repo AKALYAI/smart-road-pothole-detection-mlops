@@ -1,0 +1,6 @@
+outs:
+- md5: 221cb9a99e023be152de3c71b2a13fad.dir
+  size: 6695714
+  nfiles: 401
+  hash: md5
+  path: pothole_dataset

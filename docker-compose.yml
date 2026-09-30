@@ -1,0 +1,31 @@
+# docker compose up --build     ->  http://localhost:8000/app
+# Put real secrets in a .env file next to this one (see .env.example).
+services:
+  roadwatch:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      API_KEY: ${API_KEY:-roadwatch-demo-key}
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me-please-32-bytes-min}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    volumes:
+      - roadwatch-data:/data
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    command: mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow_tracking:/mlflow
+    profiles: ["mlflow"]   # docker compose --profile mlflow up
+
+volumes:
+  roadwatch-data:

@@ -1,0 +1,35 @@
+stages:
+  generate_dataset:
+    cmd: python scripts/generate_dataset.py --count 200 --out data/pothole_dataset
+    deps:
+      - scripts/generate_dataset.py
+    outs:
+      - data/pothole_dataset
+
+  train:
+    cmd: python scripts/train.py --data data/pothole_dataset/data.yaml --epochs 30 --imgsz 640
+    deps:
+      - scripts/train.py
+      - data/pothole_dataset
+    outs:
+      - models/best.pt
+    metrics:
+      - runs/pothole_train/results.csv:
+          cache: false
+
+  evaluate:
+    cmd: python scripts/evaluate.py --split test
+    deps:
+      - scripts/evaluate.py
+      - models/best.pt
+      - data/pothole_dataset
+
+  compute_baseline:
+    cmd: python scripts/compute_baseline.py --split val
+    deps:
+      - scripts/compute_baseline.py
+      - models/best.pt
+      - data/pothole_dataset
+    outs:
+      - models/baseline_stats.json:
+          cache: false

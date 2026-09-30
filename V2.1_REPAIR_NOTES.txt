@@ -1,0 +1,14 @@
+RoadWatch v2.1 repair notes
+===========================
+1. backend/app/core/config.py
+   - Default SQLite DB path is now absolute under the backend directory, so
+     running uvicorn from backend/ or the repository root uses the same DB.
+2. backend/requirements.txt
+   - Added pytest and httpx for the documented test command.
+3. frontend/script.js
+   - API network failures now show the actual backend address/startup hint.
+4. frontend/citizen.js / frontend/admin.js
+   - Road Health, Dataset, Audit, Model Performance/Versions, Confidence and
+     Hotspots now show the actual API error instead of a generic message.
+5. backend/app/routers/health_router.py
+   - Added safe operational flags for MLflow and dataset directory availability.
